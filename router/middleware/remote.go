@@ -8,6 +8,7 @@ import (
 	"github.com/drone/drone/remote/bitbucket"
 	"github.com/drone/drone/remote/bitbucketserver"
 	"github.com/drone/drone/remote/gitea"
+	"github.com/drone/drone/remote/coding"
 	"github.com/drone/drone/remote/github"
 	"github.com/drone/drone/remote/gitlab"
 	"github.com/drone/drone/remote/gogs"
@@ -42,6 +43,8 @@ func setupRemote(c *cli.Context) (remote.Remote, error) {
 		return setupGogs(c)
 	case c.Bool("gitea"):
 		return setupGitea(c)
+	case c.Bool("coding"):
+		return setupCoding(c)
 	default:
 		return nil, fmt.Errorf("version control system not configured")
 	}
@@ -116,5 +119,19 @@ func setupGithub(c *cli.Context) (remote.Remote, error) {
 		PrivateMode: c.Bool("github-private-mode"),
 		SkipVerify:  c.Bool("github-skip-verify"),
 		MergeRef:    c.BoolT("github-merge-ref"),
+	})
+}
+
+// helper function to setup the Coding remote from the CLI arguments.
+func setupCoding(c *cli.Context) (remote.Remote, error) {
+	return coding.New(coding.Opts{
+		URL:        c.String("coding-server"),
+		Client:     c.String("coding-client"),
+		Secret:     c.String("coding-secret"),
+		Scopes:     c.StringSlice("coding-scope"),
+		Machine:    c.String("coding-git-machine"),
+		Username:   c.String("coding-git-username"),
+		Password:   c.String("coding-git-password"),
+		SkipVerify: c.Bool("coding-skip-verify"),
 	})
 }
