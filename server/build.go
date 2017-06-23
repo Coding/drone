@@ -174,7 +174,7 @@ func PostApproval(c *gin.Context) {
 	//
 
 	// fetch the build file from the database
-	raw, err := remote_.File(user, repo, build, repo.Config)
+	conf, err := Config.Storage.Config.ConfigLoad(build.ConfigID)
 	if err != nil {
 		logrus.Errorf("failure to get build config for %s. %s", repo.FullName, err)
 		c.AbortWithError(404, err)
@@ -197,7 +197,7 @@ func PostApproval(c *gin.Context) {
 	// get the previous build so that we can send
 	// on status change notifications
 	last, _ := store.GetBuildLastBefore(c, repo, build.Branch, build.ID)
-	secs, err := Config.Services.Secrets.SecretList(repo)
+	secs, err := Config.Services.Secrets.SecretListBuild(repo, build)
 	if err != nil {
 		logrus.Debugf("Error getting secrets for %s#%d. %s", repo.FullName, build.Number, err)
 	}
@@ -222,7 +222,7 @@ func PostApproval(c *gin.Context) {
 		Secs:  secs,
 		Regs:  regs,
 		Link:  httputil.GetURL(c.Request),
-		Yaml:  string(raw),
+		Yaml:  conf.Data,
 	}
 	items, err := b.Build()
 	if err != nil {
@@ -394,7 +394,7 @@ func PostBuild(c *gin.Context) {
 	}
 
 	// fetch the .drone.yml file from the database
-	raw, err := remote_.File(user, repo, build, repo.Config)
+	conf, err := Config.Storage.Config.ConfigLoad(build.ConfigID)
 	if err != nil {
 		logrus.Errorf("failure to get build config for %s. %s", repo.FullName, err)
 		c.AbortWithError(404, err)
@@ -476,7 +476,7 @@ func PostBuild(c *gin.Context) {
 	// get the previous build so that we can send
 	// on status change notifications
 	last, _ := store.GetBuildLastBefore(c, repo, build.Branch, build.ID)
-	secs, err := Config.Services.Secrets.SecretList(repo)
+	secs, err := Config.Services.Secrets.SecretListBuild(repo, build)
 	if err != nil {
 		logrus.Debugf("Error getting secrets for %s#%d. %s", repo.FullName, build.Number, err)
 	}
@@ -493,9 +493,9 @@ func PostBuild(c *gin.Context) {
 		Secs:  secs,
 		Regs:  regs,
 		Link:  httputil.GetURL(c.Request),
-		Yaml:  string(raw),
+		Yaml:  conf.Data,
+		Envs:  buildParams,
 	}
-	// TODO inject environment varibles !!!!!! buildParams
 	items, err := b.Build()
 	if err != nil {
 		build.Status = model.StatusError

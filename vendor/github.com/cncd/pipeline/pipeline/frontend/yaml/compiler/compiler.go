@@ -6,7 +6,6 @@ import (
 	"github.com/cncd/pipeline/pipeline/backend"
 	"github.com/cncd/pipeline/pipeline/frontend"
 	"github.com/cncd/pipeline/pipeline/frontend/yaml"
-	// libcompose "github.com/docker/libcompose/yaml"
 )
 
 // TODO(bradrydzewski) compiler should handle user-defined volumes from YAML
@@ -26,6 +25,15 @@ type Secret struct {
 	Match []string
 }
 
+type ResourceLimit struct {
+	MemSwapLimit int64
+	MemLimit     int64
+	ShmSize      int64
+	CPUQuota     int64
+	CPUShares    int64
+	CPUSet       string
+}
+
 // Compiler compiles the yaml
 type Compiler struct {
 	local      bool
@@ -39,7 +47,8 @@ type Compiler struct {
 	metadata   frontend.Metadata
 	registries []Registry
 	secrets    map[string]Secret
-	aliases    []string
+	cacher     Cacher
+	reslimit   ResourceLimit
 }
 
 // New creates a new Compiler with options.
@@ -113,17 +122,19 @@ func (c *Compiler) Compile(conf *yaml.Config) *backend.Config {
 		}
 	}
 
+	c.setupCache(conf, config)
+
 	// add services steps
 	if len(conf.Services.Containers) != 0 {
 		stage := new(backend.Stage)
 		stage.Name = fmt.Sprintf("%s_services", c.prefix)
 		stage.Alias = "services"
 
-		for _, container := range conf.Services.Containers {
-			c.aliases = append(c.aliases, container.Name)
-		}
-
 		for i, container := range conf.Services.Containers {
+			if !container.Constraints.Match(c.metadata) {
+				continue
+			}
+
 			name := fmt.Sprintf("%s_services_%d", c.prefix, i)
 			step := c.createProcess(name, container)
 			stage.Steps = append(stage.Steps, step)
@@ -136,6 +147,11 @@ func (c *Compiler) Compile(conf *yaml.Config) *backend.Config {
 	var stage *backend.Stage
 	var group string
 	for i, container := range conf.Pipeline.Containers {
+		//Skip if local and should not run local
+		if c.local && !container.Constraints.Local.Bool() {
+			continue
+		}
+
 		if !container.Constraints.Match(c.metadata) {
 			continue
 		}
@@ -154,34 +170,41 @@ func (c *Compiler) Compile(conf *yaml.Config) *backend.Config {
 		stage.Steps = append(stage.Steps, step)
 	}
 
+	c.setupCacheRebuild(conf, config)
+
 	return config
 }
 
-// func setupNetwork(step *backend.Step, network *libcompose.Network) {
-// 	step.Networks = append(step.Networks, backend.Conn{
-// 		Name: network.Name,
-// 		// Aliases:
-// 	})
-// }
-//
-// func setupVolume(step *backend.Step, volume *libcompose.Volume) {
-// 	step.Volumes = append(step.Volumes, volume.String())
-// }
-//
-// var (
-// 	// Default plugin used to clone the repository.
-// 	defaultCloneImage = "plugins/git:latest"
-//
-// 	// Default plugin settings used to clone the repository.
-// 	defaultCloneVargs = map[string]interface{}{
-// 		"depth": 0,
-// 	}
-// )
-//
-// // defaultClone returns the default step for cloning an image.
-// func defaultClone() *yaml.Container {
-// 	return &yaml.Container{
-// 		Image: defaultCloneImage,
-// 		Vargs: defaultCloneVargs,
-// 	}
-// }
+func (c *Compiler) setupCache(conf *yaml.Config, ir *backend.Config) {
+	if c.local || len(conf.Cache) == 0 || c.cacher == nil {
+		return
+	}
+
+	container := c.cacher.Restore(c.metadata.Repo.Name, c.metadata.Curr.Commit.Branch, conf.Cache)
+	name := fmt.Sprintf("%s_restore_cache", c.prefix)
+	step := c.createProcess(name, container)
+
+	stage := new(backend.Stage)
+	stage.Name = name
+	stage.Alias = "restore_cache"
+	stage.Steps = append(stage.Steps, step)
+
+	ir.Stages = append(ir.Stages, stage)
+}
+
+func (c *Compiler) setupCacheRebuild(conf *yaml.Config, ir *backend.Config) {
+	if c.local || len(conf.Cache) == 0 || c.metadata.Curr.Event != "push" || c.cacher == nil {
+		return
+	}
+	container := c.cacher.Rebuild(c.metadata.Repo.Name, c.metadata.Curr.Commit.Branch, conf.Cache)
+
+	name := fmt.Sprintf("%s_rebuild_cache", c.prefix)
+	step := c.createProcess(name, container)
+
+	stage := new(backend.Stage)
+	stage.Name = name
+	stage.Alias = "rebuild_cache"
+	stage.Steps = append(stage.Steps, step)
+
+	ir.Stages = append(ir.Stages, stage)
+}

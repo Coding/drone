@@ -6,6 +6,9 @@ func Lookup(name string) string {
 }
 
 var index = map[string]string{
+	"config-find-id":            configFindId,
+	"config-find-repo-hash":     configFindRepoHash,
+	"config-find-approved":      configFindApproved,
 	"count-users":               countUsers,
 	"count-repos":               countRepos,
 	"count-builds":              countBuilds,
@@ -22,6 +25,7 @@ var index = map[string]string{
 	"registry-find-repo-addr":   registryFindRepoAddr,
 	"registry-delete-repo":      registryDeleteRepo,
 	"registry-delete":           registryDelete,
+	"repo-update-counter":       repoUpdateCounter,
 	"secret-find-repo":          secretFindRepo,
 	"secret-find-repo-name":     secretFindRepoName,
 	"secret-delete":             secretDelete,
@@ -32,6 +36,35 @@ var index = map[string]string{
 	"task-list":                 taskList,
 	"task-delete":               taskDelete,
 }
+
+var configFindId = `
+SELECT
+ config_id
+,config_repo_id
+,config_hash
+,config_data
+FROM config
+WHERE config_id = $1
+`
+
+var configFindRepoHash = `
+SELECT
+ config_id
+,config_repo_id
+,config_hash
+,config_data
+FROM config
+WHERE config_repo_id = $1
+  AND config_hash    = $2
+`
+
+var configFindApproved = `
+SELECT build_id FROM builds
+WHERE build_repo_id = $1
+AND build_config_id = $2
+AND build_status NOT IN ('blocked', 'pending')
+LIMIT 1
+`
 
 var countUsers = `
 SELECT reltuples
@@ -132,6 +165,7 @@ SELECT
 ,proc_environ
 FROM procs
 WHERE proc_build_id = $1
+ORDER BY proc_id ASC
 `
 
 var procsFindBuildPid = `
@@ -214,6 +248,12 @@ DELETE FROM registry WHERE registry_repo_id = $1
 
 var registryDelete = `
 DELETE FROM registry WHERE registry_id = $1
+`
+
+var repoUpdateCounter = `
+UPDATE repos SET repo_counter = $1
+WHERE repo_counter = $2
+  AND repo_id = $3
 `
 
 var secretFindRepo = `

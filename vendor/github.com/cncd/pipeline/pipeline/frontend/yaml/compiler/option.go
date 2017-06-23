@@ -77,7 +77,7 @@ func WithNetrc(username, password, machine string) Option {
 			"CI_NETRC_PASSWORD": password,
 			"CI_NETRC_MACHINE":  machine,
 
-			// TODO this is present for backward compatibility and should
+			// TODO: This is present for backward compatibility and should
 			// be removed in a future version.
 			"DRONE_NETRC_USERNAME": username,
 			"DRONE_NETRC_PASSWORD": password,
@@ -145,6 +145,34 @@ func WithEnviron(env map[string]string) Option {
 	}
 }
 
+// WithCacher configures the compiler with default cache settings.
+func WithCacher(cacher Cacher) Option {
+	return func(compiler *Compiler) {
+		compiler.cacher = cacher
+	}
+}
+
+// WithVolumeCacher configures the compiler with default local volume
+// caching enabled.
+func WithVolumeCacher(base string) Option {
+	return func(compiler *Compiler) {
+		compiler.cacher = &volumeCacher{base: base}
+	}
+}
+
+// WithS3Cacher configures the compiler with default amazon s3
+// caching enabled.
+func WithS3Cacher(access, secret, region, bucket string) Option {
+	return func(compiler *Compiler) {
+		compiler.cacher = &s3Cacher{
+			access: access,
+			secret: secret,
+			bucket: bucket,
+			region: region,
+		}
+	}
+}
+
 // WithProxy configures the compiler with HTTP_PROXY, HTTPS_PROXY,
 // and NO_PROXY environment variables added by default to every
 // container in the pipeline.
@@ -166,6 +194,21 @@ func WithProxy() Option {
 func WithNetworks(networks ...string) Option {
 	return func(compiler *Compiler) {
 		compiler.networks = networks
+	}
+}
+
+// WithResourceLimit configures the compiler with default resource limits that
+// are applied each container in the pipeline.
+func WithResourceLimit(swap, mem, shmsize, cpuQuota, cpuShares int64, cpuSet string) Option {
+	return func(compiler *Compiler) {
+		compiler.reslimit = ResourceLimit{
+			MemSwapLimit: swap,
+			MemLimit:     mem,
+			ShmSize:      shmsize,
+			CPUQuota:     cpuQuota,
+			CPUShares:    cpuShares,
+			CPUSet:       cpuSet,
+		}
 	}
 }
 
