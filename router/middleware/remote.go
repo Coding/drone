@@ -8,7 +8,6 @@ import (
 	"github.com/drone/drone/remote/bitbucket"
 	"github.com/drone/drone/remote/bitbucketserver"
 	"github.com/drone/drone/remote/gitea"
-
 	"github.com/drone/drone/remote/coding"
 	"github.com/drone/drone/remote/github"
 	"github.com/drone/drone/remote/gitlab"
@@ -44,7 +43,6 @@ func setupRemote(c *cli.Context) (remote.Remote, error) {
 		return setupGogs(c)
 	case c.Bool("gitea"):
 		return setupGitea(c)
-
 	case c.Bool("coding"):
 		return setupCoding(c)
 	default:
