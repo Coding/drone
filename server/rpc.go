@@ -41,8 +41,9 @@ var Config = struct {
 		// Repos  model.RepoStore
 		// Builds model.BuildStore
 		// Logs   model.LogStore
-		Files model.FileStore
-		Procs model.ProcStore
+		Config model.ConfigStore
+		Files  model.FileStore
+		Procs  model.ProcStore
 		// Registries model.RegistryStore
 		// Secrets model.SecretStore
 	}
@@ -57,6 +58,7 @@ var Config = struct {
 		// Admins map[string]struct{}
 	}
 	Pipeline struct {
+		Limits     model.ResourceLimit
 		Volumes    []string
 		Networks   []string
 		Privileged []string
@@ -95,7 +97,16 @@ func RPCHandler(c *gin.Context) {
 		c.Request.Header.Get("X-Drone-Version"),
 	)
 	logrus.Debugf("agent connected: ip address %s: version %s", c.ClientIP(), agent)
-	if agent.LessThan(version.Version) {
+	// if agent.LessThan(version.Version) {
+	// 	logrus.Warnf("Version mismatch. Agent version %s < Server version %s", agent, version.Version)
+	// 	c.String(409, "Version mismatch. Agent version %s < Server version %s", agent, version.Version)
+	// 	return
+	// }
+
+	switch agent.Minor {
+	case 6, 7:
+		// these versions are ok
+	default:
 		logrus.Warnf("Version mismatch. Agent version %s < Server version %s", agent, version.Version)
 		c.String(409, "Version mismatch. Agent version %s < Server version %s", agent, version.Version)
 		return
@@ -138,6 +149,17 @@ func (s *RPC) Next(c context.Context, filter rpc.Filter) (*rpc.Pipeline, error) 
 		return nil, nil
 	}
 	pipeline := new(rpc.Pipeline)
+
+	// check if the process was previously cancelled
+	// cancelled, _ := s.checkCancelled(pipeline)
+	// if cancelled {
+	// 	logrus.Debugf("ignore pid %v: cancelled by user", pipeline.ID)
+	// 	if derr := s.queue.Done(c, pipeline.ID); derr != nil {
+	// 		logrus.Errorf("error: done: cannot ack proc_id %v: %s", pipeline.ID, err)
+	// 	}
+	// 	return nil, nil
+	// }
+
 	err = json.Unmarshal(task.Data, pipeline)
 	return pipeline, err
 }
@@ -431,4 +453,19 @@ func (s *RPC) Log(c context.Context, id string, line *rpc.Line) error {
 	entry.Data, _ = json.Marshal(line)
 	s.logger.Write(c, id, entry)
 	return nil
+}
+
+func (s *RPC) checkCancelled(pipeline *rpc.Pipeline) (bool, error) {
+	pid, err := strconv.ParseInt(pipeline.ID, 10, 64)
+	if err != nil {
+		return false, err
+	}
+	proc, err := s.store.ProcLoad(pid)
+	if err != nil {
+		return false, err
+	}
+	if proc.State == model.StatusKilled {
+		return true, nil
+	}
+	return false, err
 }

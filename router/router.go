@@ -22,12 +22,7 @@ func Load(middleware ...gin.HandlerFunc) http.Handler {
 
 	e := gin.New()
 	e.Use(gin.Recovery())
-
-	if pattern := os.Getenv("DRONE_TEMPLATE_GLOB"); pattern == "" {
-		e.SetHTMLTemplate(template.Load())
-	} else {
-		e.SetHTMLTemplate(template.Glob(pattern))
-	}
+	e.SetHTMLTemplate(template.T)
 
 	if dir := os.Getenv("DRONE_STATIC_DIR"); dir == "" {
 		fs := http.FileServer(dist.AssetFS())
@@ -97,9 +92,9 @@ func Load(middleware ...gin.HandlerFunc) http.Handler {
 			// requires push permissions
 			repo.GET("/registry", session.MustPush, server.GetRegistryList)
 			repo.POST("/registry", session.MustPush, server.PostRegistry)
-			repo.GET("/registry/:address", session.MustPush, server.GetRegistry)
-			repo.PATCH("/registry/:address", session.MustPush, server.PatchRegistry)
-			repo.DELETE("/registry/:address", session.MustPush, server.DeleteRegistry)
+			repo.GET("/registry/:registry", session.MustPush, server.GetRegistry)
+			repo.PATCH("/registry/:registry", session.MustPush, server.PatchRegistry)
+			repo.DELETE("/registry/:registry", session.MustPush, server.DeleteRegistry)
 
 			// requires push permissions
 			repo.PATCH("", session.MustPush, server.PatchRepo)

@@ -6,48 +6,59 @@ pipeline:
   test:
     image: golang:1.8
     commands:
-      - make deps gen
-      - make test test_postgres test_mysql
+      - go get -u github.com/drone/drone-ui/dist
+      - go get -u golang.org/x/tools/cmd/cover
+      - go test -cover $(go list ./... | grep -v /vendor/)
 
-  compile:
+  test_postgres:
     image: golang:1.8
+    environment:
+      - DATABASE_DRIVER=postgres
+      - DATABASE_CONFIG=host=postgres user=postgres dbname=postgres sslmode=disable
     commands:
-      - export PATH=$PATH:/go/bin
-      - make build
+      - go test github.com/drone/drone/store/datastore
+
+  test_mysql:
+    image: golang:1.8
+    environment:
+      - DATABASE_DRIVER=mysql
+      - DATABASE_CONFIG=root@tcp(mysql:3306)/test?parseTime=true
+    commands:
+      - go test github.com/drone/drone/store/datastore
+
+  build:
+    image: golang:1.8
+    commands: sh .drone.sh
+    secrets: [ ssh_key ]
     when:
+      event: [ push, tag ]
+
+  publish:
+    image: plugins/docker
+    repo: drone/drone
+    secrets: [ docker_username, docker_password ]
+    tag: [ latest ]
+    when:
+      branch: master
       event: push
 
-  archive:
-    image: plugins/s3
-    acl: public-read
-    bucket: downloads.drone.io
-    source: release/**/*.*
-    target: /0.6.0/
-    secrets: [ aws_access_key_id, aws_secret_access_key ]
+  release:
+    image: plugins/docker
+    repo: drone/drone
+    secrets: [ docker_username, docker_password ]
+    tag: [ 0.7, 0.7.2 ]
     when:
-      event: push
-      branch: master
-
-  trigger:
-    image: plugins/downstream
-    server: https://beta.drone.io
-    fork: true
-    secrets: [ downstream_token ]
-    repositories: drone/drone-enterprise
-    when:
-      branch: master
-      event: push
+      event: tag
 
   notify:
     image: plugins/gitter
-    dummy: true # todo remove this
     secrets: [ gitter_webhook ]
     when:
       status: [ success, failure ]
 
 services:
   postgres:
-    image: postgres:9.4.5
+    image: postgres:9.6
     environment:
       - POSTGRES_USER=postgres
   mysql:

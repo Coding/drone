@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/acme/autocert"
@@ -131,6 +132,36 @@ var Command = cli.Command{
 			Usage:  "database driver configuration string",
 			Value:  "drone.sqlite",
 		},
+		//
+		// resource limit parameters
+		//
+		cli.Int64Flag{
+			Name:   "limit-mem-swap",
+			EnvVar: "DRONE_LIMIT_MEM_SWAP",
+		},
+		cli.Int64Flag{
+			Name:   "limit-mem",
+			EnvVar: "DRONE_LIMIT_MEM",
+		},
+		cli.Int64Flag{
+			Name:   "limit-shm-size",
+			EnvVar: "DRONE_LIMIT_SHM_SIZE",
+		},
+		cli.Int64Flag{
+			Name:   "limit-cpu-quota",
+			EnvVar: "DRONE_LIMIT_CPU_QUOTA",
+		},
+		cli.Int64Flag{
+			Name:   "limit-cpu-shares",
+			EnvVar: "DRONE_LIMIT_CPU_SHARES",
+		},
+		cli.StringFlag{
+			Name:   "limit-cpu-set",
+			EnvVar: "DRONE_LIMIT_CPU_SET",
+		},
+		//
+		// remote parameters
+		//
 		cli.BoolFlag{
 			EnvVar: "DRONE_GITHUB",
 			Name:   "github",
@@ -224,6 +255,37 @@ var Command = cli.Command{
 			EnvVar: "DRONE_GOGS_SKIP_VERIFY",
 			Name:   "gogs-skip-verify",
 			Usage:  "gogs skip ssl verification",
+		},
+		cli.BoolFlag{
+			EnvVar: "DRONE_GITEA",
+			Name:   "gitea",
+			Usage:  "gitea driver is enabled",
+		},
+		cli.StringFlag{
+			EnvVar: "DRONE_GITEA_URL",
+			Name:   "gitea-server",
+			Usage:  "gitea server address",
+			Value:  "https://try.gitea.io",
+		},
+		cli.StringFlag{
+			EnvVar: "DRONE_GITEA_GIT_USERNAME",
+			Name:   "gitea-git-username",
+			Usage:  "gitea service account username",
+		},
+		cli.StringFlag{
+			EnvVar: "DRONE_GITEA_GIT_PASSWORD",
+			Name:   "gitea-git-password",
+			Usage:  "gitea service account password",
+		},
+		cli.BoolFlag{
+			EnvVar: "DRONE_GITEA_PRIVATE_MODE",
+			Name:   "gitea-private-mode",
+			Usage:  "gitea private mode enabled",
+		},
+		cli.BoolFlag{
+			EnvVar: "DRONE_GITEA_SKIP_VERIFY",
+			Name:   "gitea-skip-verify",
+			Usage:  "gitea skip ssl verification",
 		},
 		cli.BoolFlag{
 			EnvVar: "DRONE_BITBUCKET",
@@ -443,15 +505,16 @@ func setupEvilGlobals(c *cli.Context, v store.Store) {
 
 	// storage
 	droneserver.Config.Storage.Files = v
+	droneserver.Config.Storage.Config = v
 
 	// services
 	droneserver.Config.Services.Queue = setupQueue(c, v)
 	droneserver.Config.Services.Logs = logging.New()
 	droneserver.Config.Services.Pubsub = pubsub.New()
 	droneserver.Config.Services.Pubsub.Create(context.Background(), "topic/events")
-	droneserver.Config.Services.Registries = registry.New(v)
-	droneserver.Config.Services.Secrets = secrets.New(v)
-	droneserver.Config.Services.Senders = sender.New(v)
+	droneserver.Config.Services.Registries = setupRegistryService(c, v)
+	droneserver.Config.Services.Secrets = setupSecretService(c, v)
+	droneserver.Config.Services.Senders = sender.New(v, v)
 	if endpoint := c.String("registry-service"); endpoint != "" {
 		droneserver.Config.Services.Registries = registry.NewRemote(endpoint)
 	}
@@ -462,14 +525,22 @@ func setupEvilGlobals(c *cli.Context, v store.Store) {
 		droneserver.Config.Services.Senders = sender.NewRemote(endpoint)
 	}
 
+	// limits
+	droneserver.Config.Pipeline.Limits.MemSwapLimit = c.Int64("limit-mem-swap")
+	droneserver.Config.Pipeline.Limits.MemLimit = c.Int64("limit-mem")
+	droneserver.Config.Pipeline.Limits.ShmSize = c.Int64("limit-shm-size")
+	droneserver.Config.Pipeline.Limits.CPUQuota = c.Int64("limit-cpu-quota")
+	droneserver.Config.Pipeline.Limits.CPUShares = c.Int64("limit-cpu-shares")
+	droneserver.Config.Pipeline.Limits.CPUSet = c.String("limit-cpu-set")
+
 	// server configuration
 	droneserver.Config.Server.Cert = c.String("server-cert")
 	droneserver.Config.Server.Key = c.String("server-key")
 	droneserver.Config.Server.Pass = c.String("agent-secret")
-	droneserver.Config.Server.Host = c.String("server-host")
+	droneserver.Config.Server.Host = strings.TrimRight(c.String("server-host"), "/")
 	droneserver.Config.Server.Port = c.String("server-addr")
 	droneserver.Config.Pipeline.Networks = c.StringSlice("network")
-	droneserver.Config.Pipeline.Volumes = c.StringSlice("volumes")
+	droneserver.Config.Pipeline.Volumes = c.StringSlice("volume")
 	droneserver.Config.Pipeline.Privileged = c.StringSlice("escalate")
 	// droneserver.Config.Server.Open = cli.Bool("open")
 	// droneserver.Config.Server.Orgs = sliceToMap(cli.StringSlice("orgs"))
